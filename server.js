@@ -534,7 +534,9 @@ app.get('/transactions', apiKeyAuth, async (req, res) => {
 
         const rawTransactions = response.data?.transactions || response.data?.data?.transactions || [];
         const formattedTransactions = rawTransactions.map(tx => ({
-            amount: parseInt(tx.gross_amount || tx.real_gross_amount || 0, 10),
+            // GoPay mengembalikan nominal IDR dalam minor unit (x100).
+            // Contoh: transaksi Rp526 diterima API sebagai 52600.
+            amount: Math.round(parseInt(tx.gross_amount || tx.real_gross_amount || 0, 10) / 100),
             status: tx.transaction_status ? tx.transaction_status.toLowerCase() : 'success',
             time: tx.transaction_time || tx.settlement_time,
             issuer: tx.qris_provider_aspi_issuer || 'GoPay / Bank',
@@ -613,7 +615,10 @@ async function verifyPayment(amount, startTime, merchantIdOverride = null, userA
     const filterStartTimeMs = startTime ? new Date(startTime).getTime() : 0;
 
     for (const tx of rawTransactions) {
-        const txAmount = parseInt(tx.gross_amount || tx.real_gross_amount || tx.amount?.value || tx.amount || 0, 10);
+        // GoPay mengembalikan nominal IDR dalam minor unit (x100),
+        // sehingga harus dinormalisasi ke rupiah sebelum dicocokkan dengan nominal QRIS.
+        const rawTxAmount = parseInt(tx.gross_amount || tx.real_gross_amount || tx.amount?.value || tx.amount || 0, 10);
+        const txAmount = Math.round(rawTxAmount / 100);
         const txTimestamp = new Date(tx.transaction_time || tx.created_at || tx.settlement_time || 0).getTime();
         const txId = tx.id || tx.order_id || tx.wallstreet_transaction_id;
 
