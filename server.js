@@ -731,6 +731,6 @@ app.get('/api/logs', apiKeyAuth, (req, res) => {
     res.json({ success: true, logs: activityLogs });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     logActivity('SYSTEM', `GoPay Partner Gateway berjalan pada port ${PORT}`);
 });
