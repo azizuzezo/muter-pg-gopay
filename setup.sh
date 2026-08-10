@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =================================================================
-# GoPay Merchant Gateway - Automated Setup Script (VPS & cPanel)
+# Muter GoPay Gateway - Automated Setup Script (by duacincin.id)
 # =================================================================
 
 set -e
@@ -12,7 +12,7 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}"
 echo "=========================================================="
-echo "        GoPay Merchant Gateway - Setup Helper             "
+echo "    Muter - GoPay Gateway Setup Helper by duacincin.id    "
 echo "=========================================================="
 echo -e "${NC}"
 

@@ -160,15 +160,15 @@ app.use(cors());
 app.use(express.json());
 
 app.get('/', (req, res) => {
-    res.send('GoPay Partner API Gateway Berjalan');
+    res.send('Muter - GoPay Partner Gateway by duacincin.id Berjalan');
 });
 
 app.get('/health', (req, res) => {
-    res.json({ status: 'OK', service: 'GoPay Partner API Gateway', timestamp: new Date() });
+    res.json({ status: 'OK', service: 'Muter - GoPay Partner Gateway', credit: 'Muter by duacincin.id', timestamp: new Date() });
 });
 
 app.get('/api/health', (req, res) => {
-    res.json({ success: true, message: 'Layanan API GoPay Berfungsi Normal', timestamp: new Date() });
+    res.json({ success: true, message: 'Layanan API Muter GoPay Gateway Berfungsi Normal', credit: 'Muter by duacincin.id', timestamp: new Date() });
 });
 
 
@@ -309,7 +309,7 @@ app.get('/qr/:id', (req, res) => {
     <div class="card">
         <div class="badge-qris">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-            GoPay / QRIS Dinamis
+            Muter — GoPay / QRIS Dinamis
         </div>
 
         <div class="amount-title">Total Pembayaran</div>
@@ -737,5 +737,5 @@ app.get('/api/logs', apiKeyAuth, (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-    logActivity('SYSTEM', `GoPay Partner Gateway berjalan pada port ${PORT}`);
+    logActivity('SYSTEM', `Muter - GoPay Gateway (by duacincin.id) berjalan pada port ${PORT}`);
 });

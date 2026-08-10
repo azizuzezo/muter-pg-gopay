@@ -1,7 +1,9 @@
 {
-  "name": "gopay-merchant-gateway",
+  "name": "muter-gopay-gateway",
   "version": "1.0.0",
-  "description": "GoPay Merchant Payment Gateway & QRIS Verification API (Stateless)",
+  "description": "Muter - GoPay Merchant Gateway & Dynamic QRIS Engine by duacincin.id",
+  "author": "Muter by duacincin.id",
+  "homepage": "https://duacincin.id",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
