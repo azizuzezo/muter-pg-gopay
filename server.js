@@ -563,6 +563,14 @@ app.get('/transactions/all', apiKeyAuth, async (req, res) => {
     return app._router.handle({ ...req, url: '/transactions', method: 'GET' }, res);
 });
 
+// Strips the internal-only `raw` field (see verifyPayment) before a transaction ever goes out
+// in an HTTP response — it's for /api/logs debugging only.
+function publicTx(tx) {
+    if (!tx) return tx;
+    const { raw, ...rest } = tx;
+    return rest;
+}
+
 // Core Helper: Verifikasi Pembayaran dari GoPay API
 // qrisId: scope klaim — satu txId hanya bisa diklaim oleh satu qrisId
 async function verifyPayment(amount, startTime, merchantIdOverride = null, userAgent = null, qrisId = null) {
@@ -628,14 +636,18 @@ async function verifyPayment(amount, startTime, merchantIdOverride = null, userA
             if (!existingClaim) {
                 // Transaksi belum diklaim siapapun → klaim sekarang
                 claimedTransactions.set(txId, { qrisId, claimedAt: Date.now() });
-                logActivity('INFO', `TRX ${txId} diklaim oleh QRIS ${qrisId || 'manual-check'}`);
+                logActivity('INFO', `TRX ${txId} diklaim oleh QRIS ${qrisId || 'manual-check'}`, tx);
                 return {
                     transaction_id: txId,
                     order_id: tx.order_id,
                     amount: txAmount,
                     payer_issuer: tx.qris_provider_aspi_issuer || 'GoPay / Bank',
                     payment_type: tx.payment_type || tx.transaction_source || 'GOPAY_INSTORE',
-                    transaction_time: tx.transaction_time || tx.settlement_time
+                    transaction_time: tx.transaction_time || tx.settlement_time,
+                    // Internal only — never sent in an HTTP response (see publicTx below),
+                    // kept so a claim's full original transaction is inspectable via
+                    // /api/logs if a field beyond the curated ones above is ever needed.
+                    raw: tx
                 };
             } else if (qrisId && existingClaim.qrisId === qrisId) {
                 // Re-check dari QRIS yang sama → kembalikan hasil yang sudah diklaim
@@ -645,7 +657,8 @@ async function verifyPayment(amount, startTime, merchantIdOverride = null, userA
                     amount: txAmount,
                     payer_issuer: tx.qris_provider_aspi_issuer || 'GoPay / Bank',
                     payment_type: tx.payment_type || tx.transaction_source || 'GOPAY_INSTORE',
-                    transaction_time: tx.transaction_time || tx.settlement_time
+                    transaction_time: tx.transaction_time || tx.settlement_time,
+                    raw: tx
                 };
             } else {
                 // Transaksi ini sudah diklaim oleh QRIS lain → skip, cari transaksi berikutnya
@@ -666,7 +679,7 @@ app.get('/api/qr-status/:id', async (req, res) => {
     }
 
     if (qris.status === 'PAID') {
-        return res.json({ success: true, paid: true, status: 'PAID', transaction: qris.transaction });
+        return res.json({ success: true, paid: true, status: 'PAID', transaction: publicTx(qris.transaction) });
     }
 
     if (Date.now() > qris.expiresAt.getTime()) {
@@ -681,8 +694,8 @@ app.get('/api/qr-status/:id', async (req, res) => {
             qris.status = 'PAID';
             qris.transaction = matched;
             qrisStore.set(qrisId, qris);
-            logActivity('SUCCESS', `Pembayaran QRIS ID ${qrisId} terverifikasi lunas untuk nominal Rp ${qris.amount}`);
-            return res.json({ success: true, paid: true, status: 'PAID', transaction: matched });
+            logActivity('SUCCESS', `Pembayaran QRIS ID ${qrisId} terverifikasi lunas untuk nominal Rp ${qris.amount}`, matched.raw);
+            return res.json({ success: true, paid: true, status: 'PAID', transaction: publicTx(matched) });
         }
         return res.json({ success: true, paid: false, status: 'PENDING', message: 'Belum ada pembayaran masuk' });
     } catch (err) {
@@ -691,15 +704,24 @@ app.get('/api/qr-status/:id', async (req, res) => {
 });
 
 // Cek Pembayaran Masuk (Support GET query & POST body)
-// Opsional: sertakan qris_id atau trx_id sebagai scope klaim agar tidak konflik dengan payment lain
+// startTime dan trx_id WAJIB (lihat validasi di bawah) — tanpa startTime, pencocokan nyari
+// sepanjang riwayat transaksi yang kelihatan dan bisa nyangkut transaksi lama yang gak
+// terkait; tanpa trx_id, dua donasi beda yang sama-sama gak ngirim trx_id bakal numpuk di
+// satu identitas klaim `null` yang sama, jadi transaksi yang udah diklaim buat donasi A bisa
+// ke-kasih lagi ke donasi B yang orangnya belum bayar apa-apa.
 app.all('/check-payment', apiKeyAuth, async (req, res) => {
     const amount = req.body?.amount || req.query?.amount;
     const startTime = req.body?.startTime || req.query?.startTime || req.query?.start_time;
-    // trx_id dipakai sebagai scope klaim agar tidak tabrakan dengan payment nominal sama
     const scopeId = req.body?.trx_id || req.query?.trx_id || null;
 
     if (!amount || isNaN(amount)) {
         return res.status(400).json({ success: false, message: 'Nominal pembayaran tidak valid' });
+    }
+    if (!startTime) {
+        return res.status(400).json({ success: false, message: 'startTime wajib diisi.' });
+    }
+    if (!scopeId) {
+        return res.status(400).json({ success: false, message: 'trx_id wajib diisi.' });
     }
 
     try {
@@ -707,11 +729,11 @@ app.all('/check-payment', apiKeyAuth, async (req, res) => {
         const matchedTransaction = await verifyPayment(amount, startTime, merchantId, req.headers['user-agent'], scopeId);
 
         if (matchedTransaction) {
-            logActivity('SUCCESS', `Pembayaran terverifikasi lunas untuk nominal Rp ${parseInt(amount, 10)}`, matchedTransaction);
+            logActivity('SUCCESS', `Pembayaran terverifikasi lunas untuk nominal Rp ${parseInt(amount, 10)}`, matchedTransaction.raw);
             return res.json({
                 success: true,
                 paid: true,
-                transaction: matchedTransaction
+                transaction: publicTx(matchedTransaction)
             });
         } else {
             return res.json({
