@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 const sessionManager = require('./sessionManager');
+const sessionStorage = require('./sessionStorage');
 
 const PORT = process.env.PORT || 3000;
 const MAX_LOGS = 100;
@@ -38,6 +39,20 @@ function logActivity(type, message, details = null) {
         activityLogs.pop();
     }
     console.log(`[${timestamp}] [${type}] ${message}`);
+}
+
+// Siapkan penyimpanan sesi sebelum sesi dipakai, supaya deploy berulang di
+// Railway / Docker tidak kehilangan sesi GoPay (lihat sessionStorage.js).
+try {
+    const storage = sessionStorage.initSessionStorage(sessionManager.SESSION_FILE);
+    if (storage.seeded) {
+        logActivity('INFO', 'Sesi GoPay di-seed dari GOPAY_SESSION_JSON.');
+    }
+    if (!storage.configured) {
+        logActivity('WARNING', 'Sesi GoPay belum ada. Isi GOPAY_SESSION_JSON atau POST /api/setup.');
+    }
+} catch (err) {
+    logActivity('ERROR', `Gagal menyiapkan penyimpanan sesi: ${err.message}`);
 }
 
 // Clean up expired claimed transactions
@@ -164,7 +179,15 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', (req, res) => {
-    res.json({ status: 'OK', service: 'Muter - GoPay Partner Gateway', credit: 'Muter by duacincin.id', timestamp: new Date() });
+    const file = sessionStorage.getSessionFile();
+    res.json({
+        status: 'OK',
+        service: 'Muter - GoPay Partner Gateway',
+        credit: 'Muter by duacincin.id',
+        session_configured: Boolean(file && fs.existsSync(file)),
+        session_storage: process.env.GOPAY_SESSION_FILE ? 'persistent' : 'ephemeral',
+        timestamp: new Date()
+    });
 });
 
 app.get('/api/health', (req, res) => {
@@ -200,6 +223,28 @@ app.get('/token-status', apiKeyAuth, async (req, res) => {
         res.json({ success: true, data: { token_status: 'valid', message: 'Token dan Sesi GoPay Merchant Aktif' } });
     } catch (err) {
         res.json({ success: false, data: { token_status: 'invalid', message: err.message } });
+    }
+});
+
+// Pemulihan tanpa akses shell: kirim JSON sesi GoPay (field refresh_token wajib).
+// Body: { "session": { ... } } atau JSON sesi langsung; string base64 juga diterima.
+app.post('/api/setup', apiKeyAuth, (req, res) => {
+    const payload = req.body?.session ?? req.body;
+    let session = null;
+    try {
+        session = sessionStorage.parseSession(typeof payload === 'string' ? payload : JSON.stringify(payload));
+    } catch (err) {
+        session = null;
+    }
+    if (!session) {
+        return res.status(400).json({ success: false, message: 'Sesi tidak valid: field refresh_token wajib ada.' });
+    }
+    try {
+        sessionStorage.writeSession(session);
+        logActivity('INFO', `Sesi GoPay diperbarui via /api/setup -> ${sessionStorage.getSessionFile()}`);
+        return res.json({ success: true, message: 'Sesi tersimpan. Auto-refresh 6 jam akan merawatnya.' });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: `Gagal menyimpan sesi: ${err.message}` });
     }
 });
 
@@ -760,4 +805,10 @@ app.get('/api/logs', apiKeyAuth, (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
     logActivity('SYSTEM', `Muter - GoPay Gateway (by duacincin.id) berjalan pada port ${PORT}`);
+    const file = sessionStorage.getSessionFile();
+    const configured = Boolean(file && fs.existsSync(file));
+    logActivity(configured ? 'INFO' : 'WARNING',
+        configured
+            ? `Sesi GoPay aktif (${process.env.GOPAY_SESSION_FILE ? `persisten di ${file}` : 'file lokal — bisa hilang saat redeploy'})`
+            : 'Sesi GoPay belum ada. Set GOPAY_SESSION_FILE ke volume persisten + GOPAY_SESSION_JSON, atau POST /api/setup.');
 });

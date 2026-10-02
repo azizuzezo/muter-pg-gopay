@@ -11,3 +11,9 @@ services:
       - .env
     environment:
       - PORT=3000
+      - GOPAY_SESSION_FILE=/data/gopay-session.json
+    volumes:
+      - gopay-session:/data
+
+volumes:
+  gopay-session:

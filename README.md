@@ -52,6 +52,13 @@ QRIS_STATIC=00020101021126610014COM.GO-JEK.WWW01189360091435898784490210G5898784
 
 # GoPay Merchant ID (Optional)
 GOPAY_MERCHANT_ID=your_merchant_id_here
+
+# Persistent session file (Optional, recommended on Railway/Docker)
+# Isi ke folder volume, contoh: /data/gopay-session.json
+GOPAY_SESSION_FILE=
+
+# Initial session bootstrap (Optional) — JSON atau base64
+GOPAY_SESSION_JSON=
 ```
 
 ---
@@ -115,6 +122,17 @@ docker compose up -d
 2. Upload project files and `.GOPAY_SESI_JANGAN_DIHAPUS.json` via Pterodactyl File Manager.
 3. Set **Startup Command** to `node server.js`.
 
+### E. Railway / Ephemeral Filesystem Deployment
+> [!IMPORTANT]
+> Filesystem container (Railway, Heroku, dsb) bersifat sementara. Tanpa langkah di bawah, file sesi hilang setiap redeploy, `/token-status` balik jadi `invalid`, dan donasi tidak akan pernah terverifikasi otomatis.
+
+1. Buat **Volume** dan mount di `/data` (Railway: service → Settings → Volumes).
+2. Set variable `GOPAY_SESSION_FILE=/data/gopay-session.json`.
+3. Set `GOPAY_SESSION_JSON` dengan isi file sesi hasil `node login.js` (JSON mentah atau base64) sebagai bootstrap awal.
+4. Deploy ulang, lalu cek `GET /health` → harus `session_configured: true` dan `session_storage: "persistent"`.
+
+Token akses di-refresh tiap 6 jam dan **refresh token ikut berganti**, jadi `GOPAY_SESSION_JSON` hanya untuk bootstrap. Volume-lah yang menjaga sesi tetap hidup antar redeploy.
+
 ---
 
 ## 📡 API Endpoint Reference
@@ -134,7 +152,12 @@ All protected endpoints require your `API_KEY` sent via HTTP Header (`X-Api-Key:
 }
 ```
 
-### 2. Generate Dynamic QRIS
+### 2. Recovery / Inject Session (No Shell Access)
+- **Endpoint:** `POST /api/setup`
+- **Body:** `{ "session": { ... } }` atau JSON sesi langsung (string base64 juga diterima). Wajib berisi `refresh_token`.
+- **Description:** Menulis ulang file sesi tanpa perlu SSH/terminal. Berguna saat sesi hilang di hosting ephemeral.
+
+### 3. Generate Dynamic QRIS
 - **Endpoint:** `GET /create-qris?amount=25000&api_key=YOUR_KEY` or `POST /create-qris`
 - **Response:**
 ```json
@@ -152,15 +175,15 @@ All protected endpoints require your `API_KEY` sent via HTTP Header (`X-Api-Key:
 }
 ```
 
-### 3. Interactive Web Checkout Interface
+### 4. Interactive Web Checkout Interface
 - **Endpoint:** `GET /qr/:id`
 - **Description:** Renders dark UI for customer payment. Append `?format=raw` to fetch raw QR image.
 
-### 4. Public QR Status Monitor (No API Key Required)
+### 5. Public QR Status Monitor (No API Key Required)
 - **Endpoint:** `GET /api/qr-status/:id`
 - **Description:** Safe endpoint for frontend payment verification without exposing `API_KEY`.
 
-### 5. Server-to-Server Payment Verification
+### 6. Server-to-Server Payment Verification
 - **Endpoint:** `GET /check-payment?amount=25000&trx_id=TRX-MUTER88K`
 - **Response:**
 ```json
@@ -178,11 +201,11 @@ All protected endpoints require your `API_KEY` sent via HTTP Header (`X-Api-Key:
 }
 ```
 
-### 6. Transaction History Mutation
+### 7. Transaction History Mutation
 - **Endpoint:** `GET /transactions`
 - **Query Params:** `startTime` (unix), `endTime` (unix), `pageSize` (default 20).
 
-### 7. Internal System Activity Logs
+### 8. Internal System Activity Logs
 - **Endpoint:** `GET /api/logs`
 
 ---
