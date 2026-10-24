@@ -174,6 +174,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ShopeePay lives in this same process under /shopee (moved from the standalone shopeepay-api-gateway).
+app.use('/shopee', require('./shopee/router')({ apiKeyAuth }));
+
 app.get('/', (req, res) => {
     res.send('Muter - GoPay Partner Gateway by duacincin.id Berjalan');
 });
